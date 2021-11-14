@@ -1,0 +1,403 @@
+import './style.css'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
+import * as dat from 'dat.gui'
+import gsap from 'gsap'
+import testFragmentShader from './shaders/test/fragment.glsl'
+import testVertexShader from './shaders/test/vertex.glsl'
+
+let playedPositions = []
+let darts = []
+let currentDartPosition = -1
+let winner = -1
+
+/**
+ * Dat GUI
+ */
+const gui = new dat.GUI()
+
+/**
+ * Raycaster
+ */
+const raycaster = new THREE.Raycaster()
+
+/**
+ * Board Tiles
+ */
+const tile1 = {
+    material: new THREE.MeshBasicMaterial({color: 0x34a0a4}),
+    value: 1
+}
+const tile2 = {
+    material: new THREE.MeshBasicMaterial({color: 0x168aad}),
+    value: 2
+}
+const tile3 = {
+    material: new THREE.MeshBasicMaterial({color: 0x34a0a4}),
+    value: 3
+}
+const tile4 = {
+    material: new THREE.MeshBasicMaterial({color: 0x168aad}),
+    value: 4
+}
+const tile5 = {
+    material: new THREE.MeshBasicMaterial({color: 0x34a0a4}),
+    value: 5
+}
+const tile6 = {
+    material: new THREE.MeshBasicMaterial({color: 0x168aad}),
+    value: 6
+}
+const tile7 = {
+    material: new THREE.MeshBasicMaterial({color: 0x34a0a4}),
+    value: 7
+}
+const tile8 = {
+    material: new THREE.MeshBasicMaterial({color: 0x168aad}),
+    value: 8
+}
+const tile9 = {
+    material: new THREE.MeshBasicMaterial({color: 0x34a0a4}),
+    value: 9
+}
+const dartObject = {
+    material: new THREE.MeshBasicMaterial({color: 0xffb703}),
+}
+const keys = {
+    1: tile1,
+    2: tile2,
+    3: tile3,
+    4: tile4,
+    5: tile5,
+    6: tile6,
+    7: tile7,
+    8: tile8,
+    9: tile9
+}
+
+/**
+ * Base
+ */
+// Canvas
+const canvas = document.querySelector('canvas.webgl')
+
+// Scene
+const scene = new THREE.Scene()
+
+// Loaders
+const dracoLoader = new DRACOLoader()
+dracoLoader.setDecoderPath('/draco/')
+
+const gltfLoader = new GLTFLoader()
+gltfLoader.setDRACOLoader(dracoLoader)
+
+/**
+ * Models
+ */
+let loaded = false
+gltfLoader.load(
+    '/models/tic-tac-toe2.glb',
+    (gltf) => {
+        tile1.mesh = gltf.scene.children.find((child) => child.name === '1')
+        tile2.mesh = gltf.scene.children.find((child) => child.name === '2')
+        tile3.mesh = gltf.scene.children.find((child) => child.name === '3')
+        tile4.mesh = gltf.scene.children.find((child) => child.name === '4')
+        tile5.mesh = gltf.scene.children.find((child) => child.name === '5')
+        tile6.mesh = gltf.scene.children.find((child) => child.name === '6')
+        tile7.mesh = gltf.scene.children.find((child) => child.name === '7')
+        tile8.mesh = gltf.scene.children.find((child) => child.name === '8')
+        tile9.mesh = gltf.scene.children.find((child) => child.name === '9')
+
+        tile1.mesh.material = tile1.material
+        tile2.mesh.material = tile2.material
+        tile3.mesh.material = tile3.material
+        tile4.mesh.material = tile4.material
+        tile5.mesh.material = tile5.material
+        tile6.mesh.material = tile6.material
+        tile7.mesh.material = tile7.material
+        tile8.mesh.material = tile8.material
+        tile9.mesh.material = tile9.material
+
+        scene.add(gltf.scene)
+        loaded = true
+
+    }
+)
+
+gltfLoader.load(
+    '/models/CrossDart.glb',
+    (gltf) => {
+        dartObject.crossMesh = gltf.scene.children[0]
+    }
+)
+gltfLoader.load(
+    '/models/CircleDart.glb',
+    (gltf) => {
+        dartObject.circleMesh = gltf.scene.children[0]
+    }
+)
+
+/**
+ * Sizes
+ */
+const sizes = {
+    width: window.innerWidth,
+    height: window.innerHeight
+}
+
+window.addEventListener('resize', () =>
+{
+    // Update sizes
+    sizes.width = window.innerWidth
+    sizes.height = window.innerHeight
+
+    // Update camera
+    camera.aspect = sizes.width / sizes.height
+    camera.updateProjectionMatrix()
+
+    // Update renderer
+    renderer.setSize(sizes.width, sizes.height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+})
+
+// Dart
+const dart = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial({color: 0xff0000})
+)
+dart.position.set(0.7, -0.6, 0)
+//scene.add(dart)
+
+const createCrossDart = () => {
+    let dart = new THREE.Mesh()
+    dart = dartObject.crossMesh.clone()
+    dart.material = dartObject.material
+    dart.position.set(0.7, -0.6, 0)
+    scene.add(dart)
+    currentDartPosition++
+    darts.push(dart)
+}
+
+const createCircleDart = () => {
+    let dart = new THREE.Mesh()
+    dart = dartObject.circleMesh.clone()
+    dart.material = dartObject.material
+    dart.position.set(0.7, -0.6, 0)
+    scene.add(dart)
+    currentDartPosition++
+    darts.push(dart)
+}
+
+
+/**
+ * Camera
+ */
+// Base camera
+const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
+camera.position.x = 0
+camera.position.y = 0
+camera.position.z = 1
+scene.add(camera)
+
+// Controls
+const controls = new OrbitControls(camera, canvas)
+controls.enableDamping = true
+
+/**
+ * Lights
+ */
+const pointLight = new THREE.PointLight(0xffffff, 0.8)
+pointLight.position.set(0,0.45,2.0)
+scene.add(pointLight)
+
+/**
+ * Renderer
+ */
+const renderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    antialias: true,
+})
+renderer.setSize(sizes.width, sizes.height)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setClearColor(0x184e77)
+
+/**
+ * Hovering mouse
+ */
+const mouse = new THREE.Vector2()
+window.addEventListener('mousemove', function (_event){
+    mouse.x = _event.clientX / sizes.width * 2 - 1
+    mouse.y = - (_event.clientY / sizes.height * 2 - 1)
+})
+
+window.addEventListener('click', function (){
+    if(currentIntersect){
+       // currentIntersect.object.material.color.set(0xffffff)
+        updatePlayerPosition(parseInt(currentIntersect.object.name))
+
+    }
+})
+
+/**
+ * Js code for tic-tac-toe
+ */
+function updatePlayerPosition(pos){
+    if(playedPositions.includes(pos)){
+        //HTML CSS TO SHOW MESSAGE
+        console.log("PLAYED ALREADY");
+    }else {
+        if(!(winner === 1 || winner === 2)){
+            createCrossDart()
+            playedPositions.push(pos)
+            keys[pos].value = 10
+            keys[pos].dart = darts[currentDartPosition]
+            let selectedPos = keys[pos].mesh.position.clone()
+            gsap.to(keys[pos].dart.position, {duration: 1, x: selectedPos.x, y: selectedPos.y, z: selectedPos.z})
+            if (!checkWinner())
+                getComputerPosition()
+        }
+    }
+}
+
+function getComputerPosition(){
+    let computerPosition
+    do{
+        computerPosition = Math.floor(Math.random() * 9) + 1
+    }while(playedPositions.includes(computerPosition))
+    playedPositions.push(computerPosition)
+    createCircleDart()
+    keys[computerPosition].dart = darts[currentDartPosition]
+    let selectedPos = keys[computerPosition].mesh.position
+    gsap.to(keys[computerPosition].dart.position, {duration: 1, x: selectedPos.x, y: selectedPos.y, z: selectedPos.z})
+    keys[computerPosition].value = 20
+    //keys[computerPosition].material.color.set(0x0000ff)
+    if(!checkWinner()){
+    }
+}
+
+function checkWinner(){
+    if(tile1.value === tile2.value && tile2.value === tile3.value){
+        if(tile1.value === 10) // check if player of pc
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile4.value === tile5.value && tile5.value === tile6.value){
+        if (tile4.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile7.value === tile8.value && tile8.value === tile9.value){
+        if (tile7.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile1.value === tile4.value && tile4.value === tile7.value) {
+        if (tile1.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile2.value === tile5.value && tile5.value === tile8.value) {
+        if (tile2.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile3.value === tile6.value && tile6.value === tile9.value){
+        if (tile3.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile1.value === tile5.value && tile5.value === tile9.value) {
+        if (tile1.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(tile3.value === tile5.value && tile5.value === tile7.value) {
+        if (tile3.value === 10)
+            winner = 1
+        else
+            winner = 2
+    }
+    else if(playedPositions.length === 9){
+        return 0
+    }else{
+        return false
+    }
+
+    if(winner === 1){
+        console.log(scene.children)
+        console.log("Player won");
+        reset()
+        return 1
+    }
+    else if(winner === 2){
+        console.log(scene.children)
+        console.log("Computer won");
+        reset()
+        return 2
+    }
+}
+
+function reset(){
+
+    for(let i = 0; i < scene.children.length; i++){
+        if(scene.children[i].name === "crossdart")
+            scene.remove(scene.children[i])
+    }
+    for(let i = 0; i < scene.children.length; i++){
+        if(scene.children[i].name === "circledart")
+            scene.remove(scene.children[i])
+    }
+    for (let i = 0; i < keys.length; i++) {
+        keys[i].value = 0
+    }
+    playedPositions = []
+    darts = []
+    currentDartPosition = -1
+    winner = -1
+
+
+}
+
+/**
+ * Animate
+ */
+const clock = new THREE.Clock()
+let currentIntersect
+
+const tick = () =>
+{
+    const elapsedTime = clock.getElapsedTime()
+
+    // Raycaster
+    raycaster.setFromCamera(mouse, camera)
+    const objToTest = [tile1.mesh, tile2.mesh, tile3.mesh, tile4.mesh, tile5.mesh, tile6.mesh, tile7.mesh, tile8.mesh, tile9.mesh]
+
+
+    if(loaded){
+        const intersects = raycaster.intersectObjects(objToTest)
+
+        for (const intersect of intersects) {
+            currentIntersect = intersects[0]
+        }
+    }
+
+    // Update controls
+    controls.update()
+
+    // Render
+    renderer.render(scene, camera)
+
+    // Call tick again on the next frame
+    window.requestAnimationFrame(tick)
+}
+
+tick()
