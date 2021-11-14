@@ -8,6 +8,7 @@ import gsap from 'gsap'
 
 let playedPositions = []
 let winner = -1
+let turn = 1
 let recheckPosition = 1
 const objToTest = []
 let dartCount = 0
@@ -92,9 +93,36 @@ fontLoader.load(
         const nameMaterial = new THREE.MeshBasicMaterial({color: 0xaffc41})
         const name = new THREE.Mesh(nameGeometry, nameMaterial)
         name.position.set(0, 3.5, -7)
+        if(window.innerWidth < 400){
+            name.scale.set(0.5, 0.5, 0.5)
+        }
         name.lookAt(camera.position)
         name.name = 'name'
         scene.add(name)
+
+        const instructions = new THREE.Mesh(
+            new THREE.TextGeometry(
+                '   Click on white\nsquares to play turn',
+                {
+                    font: font,
+                    size: 0.4,
+                    height: 0.01,
+                    curveSegments: 8,
+                    bevelEnabled: true,
+                    bevelThickness: 0.01,
+                    bevelSize: 0.01,
+                    bevelOffset: 0,
+                    bevelSegment: 5
+                }
+            ).center(),
+            new THREE.MeshBasicMaterial({color: 0xaffc41})
+        )
+        instructions.lookAt(camera.position)
+        if(window.innerWidth < 400){
+            instructions.scale.set(0.5, 0.5, 0.5)
+        }
+        instructions.position.set(0, -2.5, -4)
+        scene.add(instructions)
     }
 )
 
@@ -210,6 +238,9 @@ const createText = (txtToDisplay, position) => {
     const textMaterial = new THREE.MeshBasicMaterial({color: 0xae2012})
     const text = new THREE.Mesh(textGeometry, textMaterial)
     text.position.set(position.x, position.y, position.z)
+    if(window.innerWidth < 400){
+        text.scale.set(0.5, 0.5, 0.5)
+    }
     text.lookAt(camera.position)
     text.name = 'text'
     scene.add(text)
@@ -263,10 +294,6 @@ camera.position.y = 0
 camera.position.z = 1
 scene.add(camera)
 
-// Controls
-const controls = new OrbitControls(camera, canvas)
-controls.enableDamping = true
-
 /**
  * Lights
  */
@@ -293,17 +320,25 @@ window.addEventListener('mousemove', function (_event){
     mouse.x = _event.clientX / sizes.width * 2 - 1
     mouse.y = - (_event.clientY / sizes.height * 2 - 1)
 })
+const touch = new THREE.Vector2()
+window.addEventListener('touchstart', function (_event){
+    touch.x = _event.touches[0].clientX / sizes.width * 2 - 1
+    touch.y = - (_event.touches[0].clientY / sizes.height * 2 - 1)
+})
 
 window.addEventListener('click', function (){
     if(currentIntersect){
-        if(!scene.children.find((child) => child.name === 'text')){
-            recheckPosition = 1
-            updatePlayerPosition(parseInt(currentIntersect.object.name))
+        if(!scene.children.find((child) => child.name === 'text')) {
+            if(turn === 1) {
+                recheckPosition = 1
+                updatePlayerPosition(parseInt(currentIntersect.object.name))
+            }
             currentIntersect = []
             if (!checkWinner()) {
                 setTimeout(() => {
-                    updatePcPosition()
-                }, 800)
+                    if(turn === 0)
+                        updatePcPosition()
+                }, 1000)
             }
         }
     }
@@ -326,6 +361,7 @@ const reset = () => {
     winner = -1
     playedPositions = []
     dartCount = 0
+    turn = 1
 }
 
 const updatePlayerPosition = (position) => {
@@ -343,7 +379,7 @@ const updatePlayerPosition = (position) => {
     {
         const dart = createCrossDart()
         gsap.to(dart.position, {
-            duration: 1.3,
+            duration: 1.1,
             x: keys[position].mesh.position.x,
             y: keys[position].mesh.position.y,
             z: keys[position].mesh.position.z,
@@ -351,6 +387,7 @@ const updatePlayerPosition = (position) => {
         })
         playedPositions.push(position)
         keys[position].value = 10
+        turn = 0
     }
 }
 
@@ -364,7 +401,7 @@ const updatePcPosition = () => {
 
         const dart = createCircleDart()
         gsap.to(dart.position, {
-            duration: 1.3,
+            duration: 1.1,
             x: keys[pcPosition].mesh.position.x,
             y: keys[pcPosition].mesh.position.y,
             z: keys[pcPosition].mesh.position.z,
@@ -373,6 +410,7 @@ const updatePcPosition = () => {
         playedPositions.push(pcPosition)
         keys[pcPosition].value = 20
         checkWinner()
+        turn = 1
     }
 }
 
@@ -425,7 +463,7 @@ const checkWinner = () => {
             winner = 1
         else if (keys[3].value === 20)
             winner = 2
-    }else if(playedPositions.length === 9){
+    }else if(playedPositions.length >= 9){
         winner = 0
     }
     else {
@@ -466,7 +504,12 @@ const tick = () =>
     const elapsedTime = clock.getElapsedTime()
 
     // Raycaster
-    raycaster.setFromCamera(mouse, camera)
+    if(window.innerWidth < 400){
+        raycaster.setFromCamera(touch, camera)
+    }else{
+        raycaster.setFromCamera(mouse, camera)
+
+    }
 
     if(loaded){
         const intersects = raycaster.intersectObjects(objToTest)
@@ -478,8 +521,6 @@ const tick = () =>
         scene.children.find((child) => child.name === 'name').scale.y += Math.sin(elapsedTime * 2) * 0.001
         scene.children.find((child) => child.name === 'name').scale.z += Math.sin(elapsedTime * 2) * 0.001
     }
-    // Update controls
-    controls.update()
 
     // Render
     renderer.render(scene, camera)
